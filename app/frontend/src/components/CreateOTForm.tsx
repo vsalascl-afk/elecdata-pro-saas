@@ -138,10 +138,6 @@ export default function CreateOTForm({
         if (name) uploadedPhotos.push(name);
       }
 
-      // Find technician name for the assigned tech
-      const assignedTecnico = tecnicos.find((t) => t.auth_id === tecnicoId);
-      const tecnicoNombre = assignedTecnico?.nombre || user.nombre;
-
       const body = {
         numero: "OT-" + Date.now(),
         cliente,
@@ -154,7 +150,6 @@ export default function CreateOTForm({
         firma_por: firmaPor,
         fecha_inicio: new Date().toISOString(),
         tecnico_id: tecnicoId || user.auth_id,
-        tecnico_nombre: tecnicoNombre,
         empresa_id: user.empresa_id,
         foto_url: uploadedPhotos,
       };
