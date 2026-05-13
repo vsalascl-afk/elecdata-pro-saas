@@ -1,0 +1,402 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { Usuario } from "@/lib/types";
+import { SUPABASE_URL, SUPABASE_KEY } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Upload, X, UserCheck } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface CreateOTFormProps {
+  user: Usuario;
+  token: string;
+  onCreated: () => void;
+}
+
+interface TecnicoOption {
+  auth_id: string;
+  nombre: string;
+}
+
+export default function CreateOTForm({
+  user,
+  token,
+  onCreated,
+}: CreateOTFormProps) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [cliente, setCliente] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [direccion, setDireccion] = useState("");
+  const [tipoServ, setTipoServ] = useState("");
+  const [notas, setNotas] = useState("");
+  const [firmaPor, setFirmaPor] = useState("");
+  const [prioridad, setPrioridad] = useState("baja");
+  const [estado] = useState("pendiente");
+  const [tecnicoId, setTecnicoId] = useState(user.auth_id);
+  const [tecnicos, setTecnicos] = useState<TecnicoOption[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const canAssign = user.rol === "superadmin" || user.rol === "admin" || user.rol === "supervisor";
+
+  const fetchTecnicos = useCallback(async () => {
+    if (!canAssign) return;
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/usuarios?empresa_id=eq.${user.empresa_id}&select=auth_id,nombre,rol&order=nombre.asc`,
+        {
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // Show all users that can receive OTs (tecnicos mainly, but also others)
+          const tecList: TecnicoOption[] = data
+            .filter((u: { auth_id?: string; nombre?: string }) => u.auth_id && u.nombre)
+            .map((u: { auth_id: string; nombre: string }) => ({
+              auth_id: u.auth_id,
+              nombre: u.nombre,
+            }));
+          setTecnicos(tecList);
+        }
+      }
+    } catch {
+      // silently fail
+    }
+  }, [canAssign, user.empresa_id, token]);
+
+  useEffect(() => {
+    if (open) {
+      fetchTecnicos();
+    }
+  }, [open, fetchTecnicos]);
+
+  const uploadPhoto = async (file: File): Promise<string | null> => {
+    const fileName = `ot_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const res = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/fotos_ot/${fileName}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": file.type,
+        },
+        body: file,
+      }
+    );
+    if (!res.ok) return null;
+    return fileName;
+  };
+
+  const handleSubmit = async () => {
+    if (!cliente || !descripcion) {
+      toast({
+        title: "Error",
+        description: "Cliente y Descripción son obligatorios",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (canAssign && !tecnicoId) {
+      toast({
+        title: "Error",
+        description: "Debe asignar un técnico a la OT",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Upload photos
+      const uploadedPhotos: string[] = [];
+      for (const file of files) {
+        const name = await uploadPhoto(file);
+        if (name) uploadedPhotos.push(name);
+      }
+
+      // Find technician name for the assigned tech
+      const assignedTecnico = tecnicos.find((t) => t.auth_id === tecnicoId);
+      const tecnicoNombre = assignedTecnico?.nombre || user.nombre;
+
+      const body = {
+        numero: "OT-" + Date.now(),
+        cliente,
+        descripcion,
+        direccion,
+        tipo_serv: tipoServ,
+        prioridad,
+        estado,
+        notas,
+        firma_por: firmaPor,
+        fecha_inicio: new Date().toISOString(),
+        tecnico_id: tecnicoId || user.auth_id,
+        tecnico_nombre: tecnicoNombre,
+        empresa_id: user.empresa_id,
+        foto_url: uploadedPhotos,
+      };
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/ordenes_trabajo`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        let errorMsg = "No se pudo crear la OT";
+        try {
+          const errJson = JSON.parse(errText);
+          errorMsg = errJson.message || errJson.error || errorMsg;
+        } catch {
+          if (errText) errorMsg = errText;
+        }
+        toast({
+          title: "Error",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({ title: "Éxito", description: "OT creada correctamente en estado Pendiente" });
+      // Reset form
+      setCliente("");
+      setDescripcion("");
+      setDireccion("");
+      setTipoServ("");
+      setNotas("");
+      setFirmaPor("");
+      setPrioridad("baja");
+      setTecnicoId(user.auth_id);
+      setFiles([]);
+      setOpen(false);
+      onCreated();
+    } catch {
+      toast({
+        title: "Error",
+        description: "Error de conexión",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  if (!open) {
+    return (
+      <Button
+        onClick={() => setOpen(true)}
+        className="w-full bg-blue-600 hover:bg-blue-700 gap-2"
+      >
+        <Plus className="w-4 h-4" />
+        Crear Nueva OT
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="shadow-lg border-blue-200">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Crear Orden de Trabajo</CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Cliente *</Label>
+            <Input
+              value={cliente}
+              onChange={(e) => setCliente(e.target.value)}
+              placeholder="Nombre del cliente"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Dirección</Label>
+            <Input
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+              placeholder="Dirección"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs">Descripción *</Label>
+          <Textarea
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            placeholder="Descripción del trabajo"
+            rows={2}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Tipo de Servicio</Label>
+            <Input
+              value={tipoServ}
+              onChange={(e) => setTipoServ(e.target.value)}
+              placeholder="Tipo de servicio"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Firmado por</Label>
+            <Input
+              value={firmaPor}
+              onChange={(e) => setFirmaPor(e.target.value)}
+              placeholder="Nombre"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs">Observaciones</Label>
+          <Textarea
+            value={notas}
+            onChange={(e) => setNotas(e.target.value)}
+            placeholder="Observaciones adicionales"
+            rows={2}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Prioridad</Label>
+            <Select value={prioridad} onValueChange={setPrioridad}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="baja">Baja</SelectItem>
+                <SelectItem value="media">Media</SelectItem>
+                <SelectItem value="alta">Alta</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Estado</Label>
+            <div className="flex items-center h-10 px-3 rounded-md border bg-slate-50 text-sm text-slate-600">
+              Pendiente
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Las OT se crean siempre en estado pendiente
+            </p>
+          </div>
+        </div>
+
+        {/* Technician Assignment */}
+        {canAssign && tecnicos.length > 0 && (
+          <div>
+            <Label className="text-xs flex items-center gap-1">
+              <UserCheck className="w-3 h-3" />
+              Asignar Técnico *
+            </Label>
+            <Select value={tecnicoId} onValueChange={setTecnicoId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar técnico" />
+              </SelectTrigger>
+              <SelectContent>
+                {tecnicos.map((tec) => (
+                  <SelectItem key={tec.auth_id} value={tec.auth_id}>
+                    {tec.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Seleccione el técnico responsable de esta OT
+            </p>
+          </div>
+        )}
+
+        {/* Photo Upload */}
+        <div>
+          <Label className="text-xs">Fotos</Label>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {files.map((file, i) => (
+              <div
+                key={i}
+                className="relative w-16 h-16 rounded-lg overflow-hidden border"
+              >
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  onClick={() => removeFile(i)}
+                  className="absolute top-0 right-0 bg-red-500 text-white rounded-bl p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center hover:border-blue-400 transition-colors"
+            >
+              <Upload className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) {
+                setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+              }
+            }}
+          />
+        </div>
+
+        <Button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-blue-600 hover:bg-blue-700"
+        >
+          {loading ? "Guardando..." : "Guardar OT"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}

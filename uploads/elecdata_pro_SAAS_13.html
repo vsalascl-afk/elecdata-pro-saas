@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OT - Comtel S.p.A.</title>
+<style>
+.hidden {
+  display: none;
+}
+body {
+  font-family: 'Segoe UI', Arial;
+  margin:0;
+  background: linear-gradient(135deg, #eef2f7, #e0e7ff);
+}
+
+.header {
+  background:#0f172a;
+  color:white;
+  padding:18px;
+  text-align:center;
+  font-size:20px;
+  font-weight:bold;
+  letter-spacing:1px;
+}
+
+.container {
+  padding:20px;
+  max-width:900px;
+  margin:auto;
+}
+
+.card {
+  background:white;
+  padding:18px;
+  margin-bottom:15px;
+  border-radius:16px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.08);
+  transition:0.2s;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+}
+
+button {
+  background:#2563eb;
+  color:white;
+  border:none;
+  font-weight:bold;
+}
+
+button:hover {
+  background:#1d4ed8;
+}
+
+.badge {
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:12px;
+  color:white;
+  font-weight:bold;
+}
+
+.pendiente {background:#f59e0b;}
+.en_curso {background:#0ea5e9;}
+.completada {background:#22c55e;}
+
+@media (max-width: 600px){
+
+  .container {
+    padding:10px;
+  }
+
+  .card {
+    padding:14px;
+    border-radius:12px;
+  }
+
+  h2 {
+    font-size:18px;
+  }
+
+  button {
+    width:100%;
+    margin-top:5px;
+  }
+
+}
+#sideMenu {
+  transition: transform 0.3s ease;
+}
+
+#sideMenu.hidden {
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+
+#sideMenu:not(.hidden) {
+  transform: translateX(0);
+}
+#overlay {
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.3);
+  z-index:998;
+}
+.menuItem {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  border-radius:10px;
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.menuItem:hover {
+  background:#1e293b;
+}
+
+.menuItem.active {
+  background:#2563eb;
+}
+
+.menuItem span {
+  font-size:14px;
+}
+
+</style>
+
+</head>
+<body>
+<div id="overlay" class="hidden"></div>
+<div class="header" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px;">
+
+  <!-- ☰ botón menú -->
+  <div onclick="toggleMenu()" style="font-size:22px; cursor:pointer;">
+    ☰
+  </div>
+
+  <h2 style="margin:0;">⚡ OT - Comtel S.p.A.</h2>
+
+  <!-- usuario -->
+  <div id="userMenu" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+    <div id="userAvatar" style="
+      width:32px;
+      height:32px;
+      border-radius:50%;
+      background:#2563eb;
+      color:white;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:12px;
+      font-weight:bold;
+    ">--</div>
+  </div>
+  <div id="sideMenu" class="hidden" style="
+  position:fixed;
+  top:0;
+  left:0;
+  width:190px;
+  max-width:80%;
+  height:100%;
+  background:#0f172a;
+  color:white;
+  padding:15px;
+  z-index:999;
+">
+
+  <h3 style="margin-bottom:20px;">⚡ Menu-OT</h3>
+
+  <div class="menuItem active" onclick="irSeccion(event, 'ot')">
+    📋 <span>Órdenes</span>
+  </div>
+
+  <div class="menuItem" onclick="irSeccion(event, 'dashboard')">
+    📊 <span>Dashboard</span>
+  </div>
+
+  <div class="menuItem" onclick="logout()">
+    🚪 <span>Salir</span>
+  </div>
+
+</div>
+
+    <span id="userName" style="font-size:14px;"></span>
+  </div>
+  <div id="dropdown" class="hidden" style="
+  position:absolute;
+  top:60px;
+  right:20px;
+  background:white;
+  padding:10px;
+  border-radius:10px;
+  box-shadow:0 5px 15px rgba(0,0,0,0.1);
+">
+  <button onclick="logout()" style="width:100%;">Cerrar sesión</button>
+</div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="container">
+  <div class="card">
+    <h3>Ingreso</h3>
+    <input id="email" placeholder="Email">
+    <input id="pin" type="password" placeholder="Password">
+    <button onclick="login()">Ingresar</button>
+    <p id="error" style="color:red;"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden container">
+
+  <!-- ADMIN -->
+  <div id="adminPanel" class="card hidden">
+    <h3>Panel Admin</h3>
+    <input id="empresaNombre" placeholder="Nombre empresa">
+    <button onclick="crearEmpresa()">Crear Empresa</button>
+  </div>
+
+  <!-- CREAR OT -->
+  <div class="card">
+    <h3>Crear OT</h3>
+    <input id="cliente" placeholder="Cliente">
+    <input id="descripcion" placeholder="Descripción">
+    <input id="direccion" placeholder="Dirección">
+    <input id="tipo_serv" placeholder="Tipo de Servicio">
+    <input id="notas" placeholder="Observaciones">
+    <input id="firma_por" placeholder="Firmado por">
+    <input type="file" id="fotoOT" accept="image/*" multiple>
+
+    <select id="prioridad">
+      <option value="baja">Baja</option>
+      <option value="media">Media</option>
+      <option value="alta">Alta</option>
+    </select>
+
+    <select id="estado">
+      <option value="pendiente">Pendiente</option>
+      <option value="en_curso">En curso</option>
+      <option value="completada">Completada</option>
+    </select>
+
+    <button onclick="crearOT()">Guardar OT</button>
+  </div>
+
+  <!-- KPIs -->
+  <div id="kpis" style="display:flex; gap:10px; margin-bottom:15px;"></div>
+  <div class="card" style="max-width:100%; margin:auto;">
+  <canvas id="graficoOT" style="max-height:220px;"></canvas>
+</div>
+</div>
+</div>
+
+  <!-- FILTRO -->
+  <select id="filtroEstado" onchange="cargarOT()">
+    <option value="">Todos</option>
+    <option value="pendiente">Pendiente</option>
+    <option value="en_curso">En curso</option>
+    <option value="completada">Completada</option>
+  </select>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SignaturePad -->
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.0/dist/signature_pad.umd.min.js"></script>
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.29.0/dist/supabase.min.js"></script>
+
+<div id="listaOT"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://wdkgogppdrjnwcviflrn.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indka2dvZ3BwZHJqbndjdmlmbHJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NzkwNzgsImV4cCI6MjA5MDA1NTA3OH0.hy871eI297NaHtzz2fY__pFFJhqOVpD89TMFO2qF-3A'; // ⚠️ reemplazar
+let user = null;
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let signaturePads = {};
+
+async function supaFetch(tabla, metodo='GET', body=null, filtro=''){
+  const token = localStorage.getItem('token');
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${tabla}${filtro}`,{
+    method: metodo,
+    headers:{
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + (token || SUPABASE_KEY),
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: body ? JSON.stringify(body) : null
+  });
+
+  return res.ok ? res.json() : null;
+}
+
+async function login(){
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('pin').value.trim();
+
+  if (!email || !password) {
+    return showError('Completa los datos');
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY
+    },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+
+  if (!data.access_token) {
+    return showError('Credenciales incorrectas');
+  }
+
+  localStorage.setItem('token', data.access_token);
+
+  const userData = await supaFetch('usuarios','GET',null,`?auth_id=eq.${data.user.id}`);
+  user = userData?.[0];
+// MUESTRA USUARIO Y AVATAR
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('userName').textContent = user?.nombre || 'Usuario';
+  document.getElementById('userAvatar').textContent = getIniciales(user?.nombre);
+
+  if(user?.rol === 'admin'){
+    document.getElementById('adminPanel').classList.remove('hidden');
+  }
+
+  cargarOT();
+}
+
+function showError(msg){
+  document.getElementById('error').textContent = msg;
+}
+// FUNCION PARA MOSTAR INICIALES
+function getIniciales(nombre){
+  if(!nombre) return '--';
+
+  const partes = nombre.split(' ');
+  return partes.map(p => p[0]).join('').toUpperCase().slice(0,2);
+}
+
+async function crearOT(){
+  if(!user) return alert('Sesión inválida');
+
+// 👇 CAPTURAR FOTOS
+  //const fileInput = document.getElementById('fotoOT');
+  let fotos = [];
+const fileInput = document.getElementById('fotoOT');
+
+if(fileInput && fileInput.files.length > 0){
+  for(let file of fileInput.files){
+    const nombre = await subirFoto(file);
+    if(nombre){
+      fotos.push(nombre);
+    }
+  }
+}
+  console.log("FILES:", fileInput?.files);
+
+  if(fileInput && fileInput.files.length > 0){
+    foto = await subirFoto(fileInput.files[0]);
+    console.log("FOTO SUBIDA:", foto);
+} else {
+  console.log("NO HAY ARCHIVO");
+
+  }
+  const data = {
+    numero: 'OT-' + Date.now(),
+    cliente: val('cliente'),
+    descripcion: val('descripcion'),
+    direccion: val('direccion'),
+    tipo_serv: val('tipo_serv'),
+    prioridad: val('prioridad'),
+    estado: val('estado'),
+    notas: val('notas'),
+    firma_por: val('firma_por'),
+    fecha_inicio: new Date().toISOString(),
+    tecnico_id: user.auth_id,
+    empresa_id: user.empresa_id,
+
+    // 👇 AGREGAR ESTO
+    foto_url: fotos
+  };
+
+  const res = await supaFetch('ordenes_trabajo','POST',data);
+
+  if(!res) return alert('Error al crear OT');
+
+  alert('OT creada');
+  cargarOT();
+}
+
+async function cargarOT(){
+  if(!user) return;
+
+  let filtro = `?empresa_id=eq.${user.empresa_id}`;
+
+  if(user.rol === 'tecnico'){
+    filtro = `?tecnico_id=eq.${user.auth_id}`;
+  }
+
+  const estado = val('filtroEstado');
+  if(estado){
+    filtro += `&select=*&order=id.desc`;
+  }
+
+  const data = await supaFetch('ordenes_trabajo','GET',null,filtro);
+  renderKPIs(data);
+  renderGrafico(data);
+  renderOT(data);
+  //renderKPIs(data);
+  //renderOT(data);
+}
+let chart;
+
+function renderGrafico(lista){
+  if(!lista) return;
+
+  const pendientes = lista.filter(o=>o.estado==='pendiente').length;
+  const enCurso = lista.filter(o=>o.estado==='en_curso').length;
+  const completadas = lista.filter(o=>o.estado==='completada').length;
+
+  const ctx = document.getElementById('graficoOT');
+
+  if(chart){
+    chart.destroy();
+  }
+
+  chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Pendientes','En Curso','Completadas'],
+      datasets: [{
+        data: [pendientes, enCurso, completadas],
+        backgroundColor: [
+          '#f59e0b',
+          '#0ea5e9',
+          '#22c55e'
+        ]
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {
+          position: 'bottom'
+        }
+      }
+    }
+  });
+}
+function renderKPIs(lista){
+  const kpis = document.getElementById('kpis');
+
+  let chart;
+
+  if(!lista || lista.length === 0){
+    kpis.innerHTML = '';
+    return;
+  }
+
+  let pendientes = lista.filter(o=>o.estado==='pendiente').length;
+  let enCurso = lista.filter(o=>o.estado==='en_curso').length;
+  let completadas = lista.filter(o=>o.estado==='completada').length;
+
+  kpis.innerHTML = `
+    <div class="card">🟡 Pendientes<br><b>${pendientes}</b></div>
+    <div class="card">🔵 En Curso<br><b>${enCurso}</b></div>
+    <div class="card">🟢 Completadas<br><b>${completadas}</b></div>
+  `;
+}
+
+function renderOT(lista){
+  const cont = document.getElementById('listaOT');
+  cont.innerHTML = '';
+
+  if(!lista?.length){
+    cont.innerHTML = '<p>No hay órdenes</p>';
+    return;
+  }
+
+  // ordenar por fecha
+  lista.sort((a,b)=>{
+    const A = a.fecha_inicio ? new Date(a.fecha_inicio).getTime() : 0;
+    const B = b.fecha_inicio ? new Date(b.fecha_inicio).getTime() : 0;
+    return B - A;
+  });
+
+  lista.forEach(ot=>{
+
+    cont.innerHTML += `
+      <div class="card" style="padding:6px;margin-bottom:5px;font-size:13px;">
+        
+        <div style="display:flex;justify-content:space-between;">
+          <b>${ot.numero}</b>
+          <span class="badge ${ot.estado}">${ot.estado}</span>
+        </div>
+
+        <div style="font-size:11px;color:#64748b;">
+          ${ot.fecha_inicio ? new Date(ot.fecha_inicio).toLocaleString('es-CL',{timeZone:'America/Santiago'}) : ''}
+        </div>
+
+        <div>${ot.cliente} | ${ot.direccion}</div>
+
+        <div>
+          ${ot.descripcion} ${ot.notas ? '| '+ot.notas : ''}
+        </div>
+
+        ${ot.foto_url?.length ? `
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            ${ot.foto_url.map(f => `
+              <img src="https://wdkgogppdrjnwcviflrn.supabase.co/storage/v1/object/public/fotos_ot/${f}"
+              style="width:50px;height:50px;border-radius:4px;cursor:pointer;"
+              onclick="verImagen(this.src)">
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${ot.estado !== 'completada' ? `
+          <div style="margin-top:4px;">
+            ${ot.estado==='pendiente' ? `<button onclick="cambiarEstado('${ot.id}','en_curso')">En curso</button>`:''}
+            <button onclick="cambiarEstado('${ot.id}','completada')">Completar</button>
+          </div>
+        `:`<div style="color:green;">✔ Finalizada</div>`}
+
+        ${!ot.firma_cliente_url ? `
+          <div style="margin-top:6px;">
+            <small>Firma cliente:</small>
+            <canvas id="firma-${ot.id}" width="250" height="80" style="border:1px solid #ccc;border-radius:4px;"></canvas>
+            <br>
+            <button onclick="guardarFirma('${ot.id}')">Guardar</button>
+            <button onclick="limpiarFirma('${ot.id}')">Borrar</button>
+          </div>
+        `:`
+          <div style="margin-top:6px;">
+            <small>Firma cliente:</small><br>
+            <img src="${ot.firma_cliente_url}" style="width:250px;height:80px;border:1px solid #ccc;">
+          </div>
+        `}
+      </div>
+    `;
+
+    // 🔥 Inicializar firma
+    if(!ot.firma_cliente_url){
+      const canvas = document.getElementById(`firma-${ot.id}`);
+      if(canvas){
+        signaturePads[ot.id] = new SignaturePad(canvas);
+      }
+    }
+
+  });
+}
+function limpiarFirma(otId){
+  signaturePads[otId]?.clear();
+}
+
+async function guardarFirma(otId){
+  if(!signaturePads[otId] || signaturePads[otId].isEmpty()){
+    alert('Debe firmar');
+    return;
+  }
+
+  try{
+    const dataURL = signaturePads[otId].toDataURL();
+    const blob = await (await fetch(dataURL)).blob();
+    const fileName = `firma_${otId}.png`;
+
+    const { error } = await supabaseClient.storage
+      .from('firmas_ot')
+      .upload(fileName, blob, { upsert: true });
+
+    if(error){
+      console.error(error);
+      alert('Error subiendo firma');
+      return;
+    }
+
+    const { data } = supabaseClient.storage
+      .from('firmas_ot')
+      .getPublicUrl(fileName);
+
+    const url = data.publicUrl;
+
+    await supabaseClient
+      .from('ordenes_trabajo')
+      .update({ firma_cliente_url: url })
+      .eq('id', otId);
+
+    alert('Firma guardada');
+    cargarOT();
+
+  }catch(err){
+    console.error(err);
+    alert('Error firma');
+  }
+}
+
+  try {
+    const dataURL = signaturePads[otId].toDataURL();
+    const blob = await (await fetch(dataURL)).blob();
+    const fileName = `firma_${otId}.png`;
+
+    // subir a bucket
+    const { error: uploadError } = await supabaseClient.storage
+      .from('firmas_ot')
+      .upload(fileName, blob, { upsert: true });
+
+    if(uploadError){
+      console.error(uploadError);
+      alert('Error subiendo firma');
+      return;
+    }
+
+    const { data } = supabaseClient.storage
+      .from('firmas_ot')
+      .getPublicUrl(fileName);
+
+    const publicUrl = data.publicUrl;
+
+    // guardar en DB
+    const { error: dbError } = await supabaseClient
+      .from('ordenes_trabajo')
+      .update({ firma_cliente_url: publicUrl })
+      .eq('id', otId);
+
+    if(dbError){
+      console.error(dbError);
+      alert('Error guardando en BD');
+      return;
+    }
+
+    // actualizar UI
+    const div = document.getElementById(`firma-${otId}`).parentNode;
+    div.innerHTML = `<img src="${publicUrl}" style="width:250px;height:80px;object-fit:contain;border:1px solid #ccc;border-radius:4px;">`;
+
+    alert('Firma guardada');
+  } catch(err){
+    console.error(err);
+    alert('Error firma');
+  }
+
+function verImagen(src){
+  window.open(src, '_blank');
+}
+function botonesAdmin(id){
+  return `
+    <button onclick="cambiarEstado('${id}','en_curso')">En curso</button>
+    <button onclick="cambiarEstado('${id}','completada')">Completar</button>
+  `;
+}
+
+async function cambiarEstado(id, nuevoEstado){
+
+  console.log("ID ENVIADO:", id);
+
+  const confirmar = confirm('¿Cambiar estado?');
+  if(!confirmar) return;
+
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indka2dvZ3BwZHJqbndjdmlmbHJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NzkwNzgsImV4cCI6MjA5MDA1NTA3OH0.hy871eI297NaHtzz2fY__pFFJhqOVpD89TMFO2qF-3A'; // 👈 pega tu key
+
+  // ✅ SIEMPRE definir data aquí
+  let data = {
+    estado: nuevoEstado
+  };
+
+  // 👇 luego modificarla
+  if(nuevoEstado === 'completada'){
+    data.fecha_cierre = new Date().toISOString();
+    data.completado_por = user.nombre || 'Usuario';
+  }
+
+  const res = await fetch(
+    `https://wdkgogppdrjnwcviflrn.supabase.co/rest/v1/ordenes_trabajo?id=eq.${id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(data) // 👈 aquí usa data
+    }
+  );
+
+  const result = await res.json();
+
+  console.log("RESULT:", result);
+
+  if(!res.ok){
+    alert('Error al actualizar');
+    return;
+  }
+
+  cargarOT();
+}
+
+function val(id){
+  return document.getElementById(id).value;
+}
+document.getElementById('userMenu').addEventListener('click', () => {
+  document.getElementById('dropdown').classList.toggle('hidden');
+});
+function logout(){
+  localStorage.removeItem('token');
+  location.reload();
+}
+// 👇 AQUÍ
+async function subirFoto(file){
+
+  const fileName = `ot_${Date.now()}.jpg`;
+
+  const res = await fetch(`https://wdkgogppdrjnwcviflrn.supabase.co/storage/v1/object/fotos_ot/${fileName}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + localStorage.getItem('token'),
+      'Content-Type': file.type
+    },
+    body: file
+  });
+
+  if(!res.ok){
+    const error = await res.text();
+    console.error("ERROR REAL:", error); // 👈 CLAVE
+    return null;
+  }
+
+  return fileName;
+}
+function toggleMenu(){
+  const menu = document.getElementById('sideMenu');
+  const overlay = document.getElementById('overlay');
+
+  menu.classList.toggle('hidden');
+  overlay.classList.toggle('hidden');
+}
+
+function cerrarMenu(){
+  document.getElementById('sideMenu').classList.add('hidden');
+  document.getElementById('overlay').classList.add('hidden');
+}
+// 👇 AQUÍ
+function irSeccion(event, seccion){
+
+  document.querySelectorAll('.menuItem').forEach(i => i.classList.remove('active'));
+
+  event.currentTarget.classList.add('active');
+
+  cerrarMenu();
+
+  if(seccion === 'ot'){
+    cargarOT();
+  }
+
+  if(seccion === 'dashboard'){
+    console.log('dashboard');
+  }
+}
+document.addEventListener('click', function(e){
+  const menu = document.getElementById('sideMenu');
+  const btn = e.target.closest('[onclick="toggleMenu()"]');
+
+  if(!menu.contains(e.target) && !btn){
+    cerrarMenu();
+  }
+});
+function editarOT(id){
+  alert('Editar OT ' + id);
+}
+//function irSeccion(seccion){
+
+  // remover active
+  //document.querySelectorAll('.menuItem').forEach(i => i.classList.remove('active'));
+
+  // marcar activo
+  //event.currentTarget.classList.add('active');
+
+  //cerrarMenu();
+
+  //if(seccion === 'ot'){
+    //cargarOT();
+  //}
+
+  //if(seccion === 'dashboard'){
+    //alert('Aquí puedes poner más gráficos 🔥');
+ // }
+
+//}
+</script>
+
+</body>
+</html>
