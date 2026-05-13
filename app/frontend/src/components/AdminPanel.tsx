@@ -123,16 +123,35 @@ export default function AdminPanel({ user, token }: AdminPanelProps) {
         url += `&empresa_id=eq.${selectedEmpresaFilter}`;
       }
 
+      // Use service_role key to bypass RLS (avoids infinite recursion in policies)
+      const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
       const res = await fetch(url, {
         headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${token}`,
+          apikey: serviceKey || SUPABASE_KEY,
+          Authorization: `Bearer ${serviceKey || token}`,
           "Content-Type": "application/json",
         },
       });
       if (res.ok) {
         const data = await res.json();
         setUsuarios(data);
+      } else {
+        const errText = await res.text();
+        console.error("Error fetching usuarios:", res.status, errText);
+        // Fallback: try with regular token if service key failed
+        if (serviceKey) {
+          const fallbackRes = await fetch(url, {
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (fallbackRes.ok) {
+            const data = await fallbackRes.json();
+            setUsuarios(data);
+          }
+        }
       }
     } catch {
       toast({
@@ -232,14 +251,18 @@ export default function AdminPanel({ user, token }: AdminPanelProps) {
         empresa_id: empresaIdValue,
       };
 
+      // Use service_role key to bypass RLS when inserting into usuarios table
+      const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
+      const insertHeaders: Record<string, string> = {
+        apikey: serviceKey || SUPABASE_KEY,
+        Authorization: `Bearer ${serviceKey || token}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
       const res = await fetch(`${SUPABASE_URL}/rest/v1/usuarios`, {
         method: "POST",
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
+        headers: insertHeaders,
         body: JSON.stringify(usuarioBody),
       });
 
@@ -251,6 +274,16 @@ export default function AdminPanel({ user, token }: AdminPanelProps) {
           errorMsg = errJson.message || errJson.error || errorMsg;
         } catch {
           if (errText) errorMsg = errText;
+        }
+        // If RLS error and no service key, show helpful message
+        if (
+          (errText.includes("infinite recursion") ||
+            errText.includes("policy") ||
+            errText.includes("permission denied")) &&
+          !serviceKey
+        ) {
+          errorMsg =
+            "Error de permisos (RLS). Configure VITE_SUPABASE_SERVICE_KEY en Vercel con la Service Role Key de Supabase para resolver este problema.";
         }
         toast({
           title: "Error",
@@ -391,13 +424,15 @@ export default function AdminPanel({ user, token }: AdminPanelProps) {
     newRole: "tecnico" | "supervisor" | "admin"
   ) => {
     try {
+      // Use service_role key to bypass RLS (avoids infinite recursion in policies)
+      const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
       const res = await fetch(
         `${SUPABASE_URL}/rest/v1/usuarios?id=eq.${targetUser.id}`,
         {
           method: "PATCH",
           headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${token}`,
+            apikey: serviceKey || SUPABASE_KEY,
+            Authorization: `Bearer ${serviceKey || token}`,
             "Content-Type": "application/json",
             Prefer: "return=representation",
           },

@@ -22,7 +22,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { ClipboardList, Clock, PlayCircle, CheckCircle2, Building2 } from "lucide-react";
+import { ClipboardList, Clock, PlayCircle, CheckCircle2, Building2, Users } from "lucide-react";
 
 interface DashboardProps {
   user: Usuario;
@@ -40,7 +40,42 @@ export default function Dashboard({ user, token, refreshKey }: DashboardProps) {
     user.rol === "superadmin" ? "todas" : user.empresa_id
   );
 
+  const [totalUsuarios, setTotalUsuarios] = useState(0);
   const isSuperAdmin = user.rol === "superadmin";
+
+  const fetchUsuariosCount = useCallback(async () => {
+    try {
+      let url = `${SUPABASE_URL}/rest/v1/usuarios?select=id`;
+      if (!isSuperAdmin) {
+        url += `&empresa_id=eq.${user.empresa_id}`;
+      } else if (selectedEmpresa !== "todas") {
+        url += `&empresa_id=eq.${selectedEmpresa}`;
+      }
+
+      // Use service_role key to bypass RLS
+      const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
+      const res = await fetch(url, {
+        headers: {
+          apikey: serviceKey || SUPABASE_KEY,
+          Authorization: `Bearer ${serviceKey || token}`,
+          "Content-Type": "application/json",
+          Prefer: "count=exact",
+        },
+      });
+      if (res.ok) {
+        const contentRange = res.headers.get("content-range");
+        if (contentRange) {
+          const total = contentRange.split("/")[1];
+          setTotalUsuarios(parseInt(total, 10) || 0);
+        } else {
+          const data = await res.json();
+          setTotalUsuarios(Array.isArray(data) ? data.length : 0);
+        }
+      }
+    } catch {
+      // silently fail
+    }
+  }, [isSuperAdmin, user.empresa_id, selectedEmpresa, token]);
 
   const fetchEmpresas = useCallback(async () => {
     if (!isSuperAdmin) return;
@@ -110,6 +145,10 @@ export default function Dashboard({ user, token, refreshKey }: DashboardProps) {
     fetchOrdenes();
   }, [fetchOrdenes, refreshKey]);
 
+  useEffect(() => {
+    fetchUsuariosCount();
+  }, [fetchUsuariosCount]);
+
   const pendientes = ordenes.filter((o) => o.estado === "pendiente").length;
   const enCurso = ordenes.filter((o) => o.estado === "en_curso").length;
   const completadas = ordenes.filter((o) => o.estado === "completada").length;
@@ -178,7 +217,7 @@ export default function Dashboard({ user, token, refreshKey }: DashboardProps) {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card className="bg-gradient-to-br from-slate-50 to-slate-100">
           <CardContent className="p-4 text-center">
             <ClipboardList className="w-6 h-6 mx-auto text-slate-500 mb-1" />
@@ -205,6 +244,13 @@ export default function Dashboard({ user, token, refreshKey }: DashboardProps) {
             <CheckCircle2 className="w-6 h-6 mx-auto text-green-500 mb-1" />
             <p className="text-2xl font-bold text-green-600">{completadas}</p>
             <p className="text-xs text-muted-foreground">Completadas</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100">
+          <CardContent className="p-4 text-center">
+            <Users className="w-6 h-6 mx-auto text-indigo-500 mb-1" />
+            <p className="text-2xl font-bold text-indigo-600">{totalUsuarios}</p>
+            <p className="text-xs text-muted-foreground">Usuarios</p>
           </CardContent>
         </Card>
       </div>

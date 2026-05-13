@@ -58,12 +58,14 @@ export default function CreateOTForm({
   const fetchTecnicos = useCallback(async () => {
     if (!canAssign) return;
     try {
+      // Use service_role key to bypass RLS (avoids infinite recursion in policies)
+      const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
       const res = await fetch(
         `${SUPABASE_URL}/rest/v1/usuarios?empresa_id=eq.${user.empresa_id}&select=auth_id,nombre,rol&order=nombre.asc`,
         {
           headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${token}`,
+            apikey: serviceKey || SUPABASE_KEY,
+            Authorization: `Bearer ${serviceKey || token}`,
             "Content-Type": "application/json",
           },
         }
@@ -71,9 +73,11 @@ export default function CreateOTForm({
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          // Show all users that can receive OTs (tecnicos mainly, but also others)
+          // Filter to show only tecnicos for assignment
           const tecList: TecnicoOption[] = data
-            .filter((u: { auth_id?: string; nombre?: string }) => u.auth_id && u.nombre)
+            .filter((u: { auth_id?: string; nombre?: string; rol?: string }) => 
+              u.auth_id && u.nombre && u.rol === "tecnico"
+            )
             .map((u: { auth_id: string; nombre: string }) => ({
               auth_id: u.auth_id,
               nombre: u.nombre,

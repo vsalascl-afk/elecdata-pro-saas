@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase, supabaseAdmin, SUPABASE_URL, SUPABASE_KEY } from "@/lib/supabase";
+import { supabase, supabaseAdmin, SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_KEY } from "@/lib/supabase";
 import type { Usuario } from "@/lib/types";
 import { useEmpresa } from "@/lib/empresaContext";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,38 @@ import { Zap } from "lucide-react";
 
 interface LoginScreenProps {
   onLogin: (user: Usuario, token: string) => void;
+}
+
+/**
+ * Fetch user profile bypassing RLS using service_role key via REST API.
+ * This is the most reliable method to avoid recursive RLS policies.
+ */
+async function fetchUserBypassRLS(
+  field: string,
+  value: string
+): Promise<Usuario | undefined> {
+  const serviceKey = SUPABASE_SERVICE_KEY;
+  if (!serviceKey) return undefined;
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?${field}=eq.${encodeURIComponent(value)}&limit=1`,
+      {
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return data?.[0] as Usuario | undefined;
+    }
+  } catch {
+    // Silently fail
+  }
+  return undefined;
 }
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
@@ -43,9 +75,41 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
       let user: Usuario | undefined;
 
-      // PRIORITY 1: Use admin client (service_role) to bypass RLS entirely
-      if (supabaseAdmin) {
-        // Try by auth_id first
+      // STRATEGY 1: Direct REST API call with service_role key (bypasses RLS completely)
+      user = await fetchUserBypassRLS("auth_id", authUserId);
+
+      // If not found by auth_id, try by email
+      if (!user) {
+        user = await fetchUserBypassRLS("email", userEmail);
+
+        // Update auth_id if found by email
+        if (user && !user.auth_id && supabaseAdmin) {
+          await supabaseAdmin
+            .from("usuarios")
+            .update({ auth_id: authUserId })
+            .eq("id", user.id);
+          user.auth_id = authUserId;
+        } else if (user && !user.auth_id && SUPABASE_SERVICE_KEY) {
+          // Update via REST API
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/usuarios?id=eq.${user.id}`,
+            {
+              method: "PATCH",
+              headers: {
+                apikey: SUPABASE_SERVICE_KEY,
+                Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+                "Content-Type": "application/json",
+                Prefer: "return=minimal",
+              },
+              body: JSON.stringify({ auth_id: authUserId }),
+            }
+          );
+          user.auth_id = authUserId;
+        }
+      }
+
+      // STRATEGY 2: Use supabaseAdmin client as backup
+      if (!user && supabaseAdmin) {
         const { data: adminData } = await supabaseAdmin
           .from("usuarios")
           .select("*")
@@ -53,7 +117,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           .limit(1);
         user = adminData?.[0] as Usuario | undefined;
 
-        // If not found by auth_id, try by email
         if (!user) {
           const { data: adminEmailData } = await supabaseAdmin
             .from("usuarios")
@@ -61,22 +124,14 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             .eq("email", userEmail)
             .limit(1);
           user = adminEmailData?.[0] as Usuario | undefined;
-
-          // Update auth_id if found by email
-          if (user && !user.auth_id) {
-            await supabaseAdmin
-              .from("usuarios")
-              .update({ auth_id: authUserId })
-              .eq("id", user.id);
-            user.auth_id = authUserId;
-          }
         }
-      } else {
-        // FALLBACK: No admin client available, use REST API with service key or user token
-        // Try with user token (may fail if RLS is recursive)
+      }
+
+      // STRATEGY 3: Last resort - use user token (may fail with recursive RLS)
+      if (!user) {
         try {
           const res = await fetch(
-            `${SUPABASE_URL}/rest/v1/usuarios?auth_id=eq.${authUserId}&limit=1`,
+            `${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}&limit=1`,
             {
               headers: {
                 apikey: SUPABASE_KEY,
@@ -90,36 +145,16 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             user = userData?.[0] as Usuario | undefined;
           }
         } catch {
-          // RLS error - try by email
-        }
-
-        if (!user) {
-          try {
-            const emailRes = await fetch(
-              `${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}&limit=1`,
-              {
-                headers: {
-                  apikey: SUPABASE_KEY,
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-              }
-            );
-            if (emailRes.ok) {
-              const emailData = await emailRes.json();
-              user = emailData?.[0] as Usuario | undefined;
-            }
-          } catch {
-            // Ignore fetch errors
-          }
+          // RLS recursive error expected here
         }
       }
 
       if (!user) {
+        const hasServiceKey = !!SUPABASE_SERVICE_KEY;
         setError(
-          "Usuario no encontrado. Asegúrate de que exista un registro en la tabla 'usuarios' con el email: " +
-            userEmail +
-            ". Si el problema persiste, configura VITE_SUPABASE_SERVICE_KEY en las variables de entorno."
+          hasServiceKey
+            ? "Usuario no encontrado en la tabla 'usuarios' con email: " + userEmail + ". Verifica que el registro exista en Supabase."
+            : "Error de configuración: VITE_SUPABASE_SERVICE_KEY no está disponible. Verifica que la variable esté configurada en Vercel con el prefijo VITE_ y haz Redeploy."
         );
         setLoading(false);
         return;
