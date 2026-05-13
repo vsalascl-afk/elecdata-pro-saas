@@ -219,12 +219,17 @@ export default function AdminPanel({ user, token }: AdminPanelProps) {
         return;
       }
 
+      // empresa_id may be bigint in DB - convert to number if it's numeric
+      const empresaIdValue = /^\d+$/.test(newEmpresaId)
+        ? parseInt(newEmpresaId, 10)
+        : newEmpresaId;
+
       const usuarioBody = {
         auth_id: signUpData.user.id,
         nombre: newNombre.trim(),
         email: newEmail.trim(),
         rol: newRol,
-        empresa_id: newEmpresaId,
+        empresa_id: empresaIdValue,
       };
 
       const res = await fetch(`${SUPABASE_URL}/rest/v1/usuarios`, {
