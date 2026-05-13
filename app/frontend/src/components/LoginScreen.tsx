@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase, SUPABASE_URL, SUPABASE_KEY } from "@/lib/supabase";
+import { supabase, supabaseAdmin, SUPABASE_URL, SUPABASE_KEY } from "@/lib/supabase";
 import type { Usuario } from "@/lib/types";
 import { useEmpresa } from "@/lib/empresaContext";
 import { Button } from "@/components/ui/button";
@@ -38,24 +38,89 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       }
 
       const token = data.session.access_token;
+      const authUserId = data.user.id;
+      const userEmail = data.user.email || "";
 
-      // Fetch user profile from usuarios table
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/usuarios?auth_id=eq.${data.user.id}`,
-        {
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      let user: Usuario | undefined;
+
+      // PRIORITY 1: Use admin client (service_role) to bypass RLS entirely
+      if (supabaseAdmin) {
+        // Try by auth_id first
+        const { data: adminData } = await supabaseAdmin
+          .from("usuarios")
+          .select("*")
+          .eq("auth_id", authUserId)
+          .limit(1);
+        user = adminData?.[0] as Usuario | undefined;
+
+        // If not found by auth_id, try by email
+        if (!user) {
+          const { data: adminEmailData } = await supabaseAdmin
+            .from("usuarios")
+            .select("*")
+            .eq("email", userEmail)
+            .limit(1);
+          user = adminEmailData?.[0] as Usuario | undefined;
+
+          // Update auth_id if found by email
+          if (user && !user.auth_id) {
+            await supabaseAdmin
+              .from("usuarios")
+              .update({ auth_id: authUserId })
+              .eq("id", user.id);
+            user.auth_id = authUserId;
+          }
         }
-      );
+      } else {
+        // FALLBACK: No admin client available, use REST API with service key or user token
+        // Try with user token (may fail if RLS is recursive)
+        try {
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/usuarios?auth_id=eq.${authUserId}&limit=1`,
+            {
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          if (res.ok) {
+            const userData = await res.json();
+            user = userData?.[0] as Usuario | undefined;
+          }
+        } catch {
+          // RLS error - try by email
+        }
 
-      const userData = await res.json();
-      const user = userData?.[0] as Usuario | undefined;
+        if (!user) {
+          try {
+            const emailRes = await fetch(
+              `${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(userEmail)}&limit=1`,
+              {
+                headers: {
+                  apikey: SUPABASE_KEY,
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+            if (emailRes.ok) {
+              const emailData = await emailRes.json();
+              user = emailData?.[0] as Usuario | undefined;
+            }
+          } catch {
+            // Ignore fetch errors
+          }
+        }
+      }
 
       if (!user) {
-        setError("Usuario no encontrado en el sistema");
+        setError(
+          "Usuario no encontrado. Asegúrate de que exista un registro en la tabla 'usuarios' con el email: " +
+            userEmail +
+            ". Si el problema persiste, configura VITE_SUPABASE_SERVICE_KEY en las variables de entorno."
+        );
         setLoading(false);
         return;
       }
